@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -14,7 +13,21 @@ import (
 )
 
 var (
-	metricRe = regexp.MustCompile(`^[a-z]+\[[0-9a-z_]+\]$`)
+	metricRe       = regexp.MustCompile(`^[a-z]+\[[0-9a-z_]+\]$`)
+	defaultBuckets = []float64{
+		0.005,
+		0.01,
+		0.025,
+		0.05,
+		0.1,
+		0.25,
+		0.5,
+		1.0,
+		2.5,
+		5.0,
+		10.0,
+	}
+	defaultObjectives = map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
 )
 
 type MetricSpec struct {
@@ -213,14 +226,6 @@ func ValidateLabels(labels []string) error {
 	return nil
 }
 
-func ValidateBuckets(buckets []float64) error {
-	if len(buckets) == 0 {
-		return errors.New("Buckets must not be empty")
-	}
-
-	return nil
-}
-
 func ValidateObjectives(objectives map[string]float64) (map[float64]float64, error) {
 	result := make(map[float64]float64)
 
@@ -303,14 +308,16 @@ func ParseHandlers(file string) (map[string]MetricHandler, error) {
 				c = p
 			}
 		case "histogram":
-			err = ValidateBuckets(spec.Buckets)
-			if err != nil {
-				return result, err
+			var buckets []float64
+			if len(spec.Buckets) > 0 {
+				buckets = spec.Buckets
+			} else {
+				buckets = defaultBuckets
 			}
 			opts := prometheus.HistogramOpts{
 				Name:    spec.Name,
 				Help:    spec.Help,
-				Buckets: spec.Buckets,
+				Buckets: buckets,
 			}
 			if len(spec.Labels) == 0 {
 				p := prometheus.NewHistogram(opts)
@@ -326,14 +333,19 @@ func ParseHandlers(file string) (map[string]MetricHandler, error) {
 				c = p
 			}
 		case "summary":
-			objs, err := ValidateObjectives(spec.Objectives)
-			if err != nil {
-				return result, err
+			var objectives map[float64]float64
+			if len(spec.Objectives) > 0 {
+				objectives, err = ValidateObjectives(spec.Objectives)
+				if err != nil {
+					return result, err
+				}
+			} else {
+				objectives = defaultObjectives
 			}
 			opts := prometheus.SummaryOpts{
 				Name:       spec.Name,
 				Help:       spec.Help,
-				Objectives: objs,
+				Objectives: objectives,
 			}
 			if len(spec.Labels) == 0 {
 				p := prometheus.NewSummary(opts)
