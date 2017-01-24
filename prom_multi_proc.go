@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -28,6 +29,7 @@ var (
 		10.0,
 	}
 	defaultObjectives = map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
+	logger            *log.Logger
 )
 
 type MetricSpec struct {
@@ -57,7 +59,7 @@ type CounterHandler struct {
 func (h *CounterHandler) Handle(m *Metric) {
 	switch m.Method {
 	default:
-		log.Printf("Invalid counter method %s for metric %s\n", m.Method, m.Name)
+		logger.Printf("Invalid counter method %s for metric %s\n", m.Method, m.Name)
 	case "inc":
 		h.Counter.Inc()
 	case "add":
@@ -72,7 +74,7 @@ type CounterVecHandler struct {
 func (h *CounterVecHandler) Handle(m *Metric) {
 	switch m.Method {
 	default:
-		log.Printf("Invalid counter method %s for metric %s\n", m.Method, m.Name)
+		logger.Printf("Invalid counter method %s for metric %s\n", m.Method, m.Name)
 	case "inc":
 		h.CounterVec.WithLabelValues(m.LabelValues...).Inc()
 	case "add":
@@ -87,7 +89,7 @@ type GaugeHandler struct {
 func (h *GaugeHandler) Handle(m *Metric) {
 	switch m.Method {
 	default:
-		log.Printf("Invalid gauge method %s for metric %s\n", m.Method, m.Name)
+		logger.Printf("Invalid gauge method %s for metric %s\n", m.Method, m.Name)
 	case "set":
 		h.Gauge.Set(m.Value)
 	case "inc":
@@ -110,7 +112,7 @@ type GaugeVecHandler struct {
 func (h *GaugeVecHandler) Handle(m *Metric) {
 	switch m.Method {
 	default:
-		log.Printf("Invalid gauge vec method %s for metric %s\n", m.Method, m.Name)
+		logger.Printf("Invalid gauge vec method %s for metric %s\n", m.Method, m.Name)
 	case "set":
 		h.GaugeVec.WithLabelValues(m.LabelValues...).Set(m.Value)
 	case "inc":
@@ -199,10 +201,10 @@ func ValidateObjectives(objectives map[string]float64) (map[float64]float64, err
 	return result, nil
 }
 
-func ParseMetrics(file string) (map[string]MetricHandler, error) {
+func ParseMetrics(r io.Reader) (map[string]MetricHandler, error) {
 	result := make(map[string]MetricHandler)
 
-	jsonBlob, err := ioutil.ReadFile(file)
+	jsonBlob, err := ioutil.ReadAll(r)
 	if err != nil {
 		return result, err
 	}
@@ -326,7 +328,7 @@ func ParseMetrics(file string) (map[string]MetricHandler, error) {
 			return result, err
 		}
 		result[spec.Name] = h
-		log.Printf("Registered %s %s", spec.Type, spec.Name)
+		logger.Printf("Registered %s %s", spec.Type, spec.Name)
 	}
 
 	return result, nil
@@ -337,7 +339,7 @@ func DataReader(ln net.Listener, metricCh chan<- *Metric) {
 		// accept a connection
 		c, err := ln.Accept()
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 			continue
 		}
 
@@ -348,7 +350,7 @@ func DataReader(ln net.Listener, metricCh chan<- *Metric) {
 
 		err = d.Decode(&metric)
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 			continue
 		}
 
@@ -362,7 +364,7 @@ func DataProcessor(handlers map[string]MetricHandler, metricCh <-chan *Metric) {
 		metric := <-metricCh
 		handler, ok := handlers[metric.Name]
 		if !ok {
-			log.Printf("Metric %s not found\n", metric.Name)
+			logger.Printf("Metric %s not found\n", metric.Name)
 			continue
 		}
 		handler.Handle(metric)
