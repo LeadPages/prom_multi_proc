@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	metricRe = regexp.MustCompile(`^[a-z]+\[[0-9A-Za-z_]+\]$`)
+	metricRe = regexp.MustCompile(`^[a-z]+\[[0-9a-z_]+\]$`)
 )
 
 type MetricSpec struct {
