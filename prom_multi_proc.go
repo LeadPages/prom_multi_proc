@@ -47,12 +47,10 @@ type Metric struct {
 }
 
 type MetricHandler interface {
-	MetricSpec() *MetricSpec
 	Handle(*Metric)
 }
 
 type CounterHandler struct {
-	Spec    MetricSpec
 	Counter prometheus.Counter
 }
 
@@ -67,12 +65,7 @@ func (h *CounterHandler) Handle(m *Metric) {
 	}
 }
 
-func (h *CounterHandler) MetricSpec() *MetricSpec {
-	return &h.Spec
-}
-
 type CounterVecHandler struct {
-	Spec       MetricSpec
 	CounterVec *prometheus.CounterVec
 }
 
@@ -87,12 +80,7 @@ func (h *CounterVecHandler) Handle(m *Metric) {
 	}
 }
 
-func (h *CounterVecHandler) MetricSpec() *MetricSpec {
-	return &h.Spec
-}
-
 type GaugeHandler struct {
-	Spec  MetricSpec
 	Gauge prometheus.Gauge
 }
 
@@ -115,12 +103,7 @@ func (h *GaugeHandler) Handle(m *Metric) {
 	}
 }
 
-func (h *GaugeHandler) MetricSpec() *MetricSpec {
-	return &h.Spec
-}
-
 type GaugeVecHandler struct {
-	Spec     MetricSpec
 	GaugeVec *prometheus.GaugeVec
 }
 
@@ -143,12 +126,7 @@ func (h *GaugeVecHandler) Handle(m *Metric) {
 	}
 }
 
-func (h *GaugeVecHandler) MetricSpec() *MetricSpec {
-	return &h.Spec
-}
-
 type HistogramHandler struct {
-	Spec      MetricSpec
 	Histogram prometheus.Histogram
 }
 
@@ -156,17 +134,8 @@ func (h *HistogramHandler) Handle(m *Metric) {
 	h.Histogram.Observe(m.Value)
 }
 
-func (h *HistogramHandler) MetricSpec() *MetricSpec {
-	return &h.Spec
-}
-
 type HistogramVecHandler struct {
-	Spec         MetricSpec
 	HistogramVec *prometheus.HistogramVec
-}
-
-func (h *HistogramVecHandler) MetricSpec() *MetricSpec {
-	return &h.Spec
 }
 
 func (h *HistogramVecHandler) Handle(m *Metric) {
@@ -174,7 +143,6 @@ func (h *HistogramVecHandler) Handle(m *Metric) {
 }
 
 type SummaryHandler struct {
-	Spec    MetricSpec
 	Summary prometheus.Summary
 }
 
@@ -182,21 +150,12 @@ func (h *SummaryHandler) Handle(m *Metric) {
 	h.Summary.Observe(m.Value)
 }
 
-func (h *SummaryHandler) MetricSpec() *MetricSpec {
-	return &h.Spec
-}
-
 type SummaryVecHandler struct {
-	Spec       MetricSpec
 	SummaryVec *prometheus.SummaryVec
 }
 
 func (h *SummaryVecHandler) Handle(m *Metric) {
 	h.SummaryVec.WithLabelValues(m.LabelValues...).Observe(m.Value)
-}
-
-func (h *SummaryVecHandler) MetricSpec() *MetricSpec {
-	return &h.Spec
 }
 
 func ValidateMetric(name string) error {
@@ -240,7 +199,7 @@ func ValidateObjectives(objectives map[string]float64) (map[float64]float64, err
 	return result, nil
 }
 
-func ParseHandlers(file string) (map[string]MetricHandler, error) {
+func ParseMetrics(file string) (map[string]MetricHandler, error) {
 	result := make(map[string]MetricHandler)
 
 	jsonBlob, err := ioutil.ReadFile(file)
@@ -278,7 +237,7 @@ func ParseHandlers(file string) (map[string]MetricHandler, error) {
 			}
 			if len(spec.Labels) == 0 {
 				p := prometheus.NewCounter(opts)
-				h = &CounterHandler{spec, p}
+				h = &CounterHandler{p}
 				c = p
 			} else {
 				err = ValidateLabels(spec.Labels)
@@ -286,7 +245,7 @@ func ParseHandlers(file string) (map[string]MetricHandler, error) {
 					return result, err
 				}
 				p := prometheus.NewCounterVec(opts, spec.Labels)
-				h = &CounterVecHandler{spec, p}
+				h = &CounterVecHandler{p}
 				c = p
 			}
 		case "gauge":
@@ -296,7 +255,7 @@ func ParseHandlers(file string) (map[string]MetricHandler, error) {
 			}
 			if len(spec.Labels) == 0 {
 				p := prometheus.NewGauge(opts)
-				h = &GaugeHandler{spec, p}
+				h = &GaugeHandler{p}
 				c = p
 			} else {
 				err = ValidateLabels(spec.Labels)
@@ -304,7 +263,7 @@ func ParseHandlers(file string) (map[string]MetricHandler, error) {
 					return result, err
 				}
 				p := prometheus.NewGaugeVec(opts, spec.Labels)
-				h = &GaugeVecHandler{spec, p}
+				h = &GaugeVecHandler{p}
 				c = p
 			}
 		case "histogram":
@@ -321,7 +280,7 @@ func ParseHandlers(file string) (map[string]MetricHandler, error) {
 			}
 			if len(spec.Labels) == 0 {
 				p := prometheus.NewHistogram(opts)
-				h = &HistogramHandler{spec, p}
+				h = &HistogramHandler{p}
 				c = p
 			} else {
 				err = ValidateLabels(spec.Labels)
@@ -329,7 +288,7 @@ func ParseHandlers(file string) (map[string]MetricHandler, error) {
 					return result, err
 				}
 				p := prometheus.NewHistogramVec(opts, spec.Labels)
-				h = &HistogramVecHandler{spec, p}
+				h = &HistogramVecHandler{p}
 				c = p
 			}
 		case "summary":
@@ -349,7 +308,7 @@ func ParseHandlers(file string) (map[string]MetricHandler, error) {
 			}
 			if len(spec.Labels) == 0 {
 				p := prometheus.NewSummary(opts)
-				h = &SummaryHandler{spec, p}
+				h = &SummaryHandler{p}
 				c = p
 			} else {
 				err = ValidateLabels(spec.Labels)
@@ -357,7 +316,7 @@ func ParseHandlers(file string) (map[string]MetricHandler, error) {
 					return result, err
 				}
 				p := prometheus.NewSummaryVec(opts, spec.Labels)
-				h = &SummaryVecHandler{spec, p}
+				h = &SummaryVecHandler{p}
 				c = p
 			}
 		}

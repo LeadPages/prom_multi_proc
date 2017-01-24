@@ -14,10 +14,10 @@ import (
 
 // cli flags
 var (
-	socketFlag   = flag.String("socket", "/tmp/prom_multi_proc.sock", "Path to unix socket to listen on for incoming metrics")
-	handlersFlag = flag.String("handlers", "", "Path to json file which contains metric definitions")
-	addrFlag     = flag.String("addr", "0.0.0.0:9299", "Address to listen on for exposing prometheus metrics")
-	pathFlag     = flag.String("path", "/metrics", "Path to use for exposing prometheus metrics")
+	socketFlag  = flag.String("socket", "/tmp/prom_multi_proc.sock", "Path to unix socket to listen on for incoming metrics")
+	metricsFlag = flag.String("metrics", "", "Path to json file which contains metric definitions")
+	addrFlag    = flag.String("addr", "0.0.0.0:9299", "Address to listen on for exposing prometheus metrics")
+	pathFlag    = flag.String("path", "/metrics", "Path to use for exposing prometheus metrics")
 )
 
 func main() {
@@ -30,7 +30,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	handlers, err := ParseHandlers(*handlersFlag)
+	metrics, err := ParseMetrics(*metricsFlag)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	go DataProcessor(handlers, metricCh)
+	go DataProcessor(metrics, metricCh)
 	go DataReader(ln, metricCh)
 
 	// Expose the registered metrics via HTTP.
