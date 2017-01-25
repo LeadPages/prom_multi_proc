@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
-	"io/ioutil"
 	"log"
 	"strings"
 	"testing"
@@ -108,29 +106,22 @@ func TestParseMetrics(t *testing.T) {
 
 	// get metrics handlers
 	r := strings.NewReader(testMetrics)
-	metrics, err := ParseMetrics(r)
+
+	specs, err := ReadMetrics(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// get raw metric specs
-	r.Seek(0, 0)
-	jsonBlob, err := ioutil.ReadAll(r)
+	handlers, err := ParseMetricSpecs(specs)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var specs []MetricSpec
-	err = json.Unmarshal(jsonBlob, &specs)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(metrics) != 10 {
+	if len(handlers) != 10 {
 		t.Errorf("Expected 10 metric specs, but got %d", len(specs))
 	}
 
-	for name, handler := range metrics {
+	for name, handler := range handlers {
 		var labelValues []string
 		if strings.Contains(name, "_vec") {
 			labelValues = []string{"a", "b", "c"}
@@ -158,7 +149,7 @@ func TestParseMetrics(t *testing.T) {
 			m := Metric{
 				Name:        name,
 				Method:      method,
-				Value:       0.1,
+				Value:       1.0,
 				LabelValues: labelValues,
 			}
 			handler.Handle(&m)

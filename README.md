@@ -71,3 +71,11 @@ Usage of prom_multi_proc:
         Path to unix socket to listen on for incoming metrics (default "/tmp/prom_multi_proc.sock")
   -v    Print version information and exit
 ```
+
+## Operations
+
+Send the process a `HUP` signal to re-open log files.
+
+Send the process a `USR1` signal to re-load metrics configuration json file.
+Note that only new metrics can be added and existing metrics can be removed.
+Changes to existing metrics will be ignored.

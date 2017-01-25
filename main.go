@@ -39,29 +39,24 @@ func main() {
 		os.Exit(0)
 	}
 
+	// setup logger, this may be reloaded later with HUP signal
 	err := SetLogger(*logFlag)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
+	// setup metrics and done channels
 	metricCh := make(chan *Metric)
+	doneCh := make(chan bool)
 
+	// begin listening on socket
 	ln, err := net.Listen("unix", *socketFlag)
 	if err != nil {
 		logger.Fatal(err)
 	}
 
-	metricsFile, err := os.OpenFile(*metricsFlag, os.O_RDONLY, 0644)
-	if err != nil {
-		logger.Fatal(err)
-	}
-
-	metrics, err := ParseMetrics(metricsFile)
-	if err != nil {
-		logger.Fatal(err)
-	}
-
+	// listen for signals which make us quit
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGKILL)
 	go func() {
@@ -71,9 +66,59 @@ func main() {
 		os.Exit(0)
 	}()
 
-	go DataProcessor(metrics, metricCh)
-	go DataReader(ln, metricCh)
+	// load initial metrics from file, this may be reloaded later with USR1 signal
+	specs, handlers, err := LoadMetrics(*metricsFlag)
+	if err != nil {
+		logger.Fatal(err)
+	}
 
+	// begin processing initial metrics definitions
+	go DataProcessor(handlers, metricCh, doneCh)
+
+	// listen for USR1 signal which makes us reload our metrics definitions
+	sigu := make(chan os.Signal, 1)
+	signal.Notify(sigu, syscall.SIGUSR1)
+	go func() {
+		for {
+			<-sigu
+			logger.Println("Re-loading configuration...")
+
+			// note names of original metrics
+			originalNames := metricNames(specs)
+
+			// reload metrics definitions file
+			newSpecs, newHandlers, err := LoadMetrics(*metricsFlag)
+			if err != nil {
+				logger.Printf("Error re-loading configuration: %s", err)
+				continue
+			}
+
+			// stop the old data processor
+			doneCh <- true
+
+			// add newly registered specs and handlers
+			for name, handler := range newHandlers {
+				handlers[name] = handler
+			}
+
+			// get names of metrics no longer present and unregister them
+			newNames := metricNames(newSpecs)
+			unreg := sliceSubStr(originalNames, newNames)
+			Unregister(handlers, unreg)
+
+			// delete unregistered handlers
+			for _, name := range unreg {
+				delete(handlers, name)
+			}
+
+			specs = newSpecs
+
+			// begin processing incoming metrics again
+			go DataProcessor(handlers, metricCh, doneCh)
+		}
+	}()
+
+	// listen for HUP signal which makes us reopen our log file descriptors
 	sigh := make(chan os.Signal, 1)
 	signal.Notify(sigh, syscall.SIGHUP)
 	go func() {
@@ -85,10 +130,13 @@ func main() {
 				fmt.Println(err)
 				os.Exit(1)
 			}
-			logger.Println("Hello!")
 		}
 	}()
 
+	// begin reading off socket and sending results into metrics channel
+	go DataReader(ln, metricCh)
+
+	// setup prometheus http handlers and begin listening
 	promHandler := promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		ErrorLog: logger,
 	})

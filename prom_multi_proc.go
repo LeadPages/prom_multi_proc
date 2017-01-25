@@ -53,6 +53,7 @@ type Metric struct {
 
 type MetricHandler interface {
 	Handle(*Metric)
+	Collector() prometheus.Collector
 }
 
 type CounterHandler struct {
@@ -70,6 +71,10 @@ func (h *CounterHandler) Handle(m *Metric) {
 	}
 }
 
+func (h *CounterHandler) Collector() prometheus.Collector {
+	return h.Counter
+}
+
 type CounterVecHandler struct {
 	CounterVec *prometheus.CounterVec
 }
@@ -83,6 +88,10 @@ func (h *CounterVecHandler) Handle(m *Metric) {
 	case "add":
 		h.CounterVec.WithLabelValues(m.LabelValues...).Add(m.Value)
 	}
+}
+
+func (h *CounterVecHandler) Collector() prometheus.Collector {
+	return h.CounterVec
 }
 
 type GaugeHandler struct {
@@ -108,6 +117,10 @@ func (h *GaugeHandler) Handle(m *Metric) {
 	}
 }
 
+func (h *GaugeHandler) Collector() prometheus.Collector {
+	return h.Gauge
+}
+
 type GaugeVecHandler struct {
 	GaugeVec *prometheus.GaugeVec
 }
@@ -131,12 +144,20 @@ func (h *GaugeVecHandler) Handle(m *Metric) {
 	}
 }
 
+func (h *GaugeVecHandler) Collector() prometheus.Collector {
+	return h.GaugeVec
+}
+
 type HistogramHandler struct {
 	Histogram prometheus.Histogram
 }
 
 func (h *HistogramHandler) Handle(m *Metric) {
 	h.Histogram.Observe(m.Value)
+}
+
+func (h *HistogramHandler) Collector() prometheus.Collector {
+	return h.Histogram
 }
 
 type HistogramVecHandler struct {
@@ -147,6 +168,10 @@ func (h *HistogramVecHandler) Handle(m *Metric) {
 	h.HistogramVec.WithLabelValues(m.LabelValues...).Observe(m.Value)
 }
 
+func (h *HistogramVecHandler) Collector() prometheus.Collector {
+	return h.HistogramVec
+}
+
 type SummaryHandler struct {
 	Summary prometheus.Summary
 }
@@ -155,12 +180,20 @@ func (h *SummaryHandler) Handle(m *Metric) {
 	h.Summary.Observe(m.Value)
 }
 
+func (h *SummaryHandler) Collector() prometheus.Collector {
+	return h.Summary
+}
+
 type SummaryVecHandler struct {
 	SummaryVec *prometheus.SummaryVec
 }
 
 func (h *SummaryVecHandler) Handle(m *Metric) {
 	h.SummaryVec.WithLabelValues(m.LabelValues...).Observe(m.Value)
+}
+
+func (h *SummaryVecHandler) Collector() prometheus.Collector {
+	return h.SummaryVec
 }
 
 type nopCloser struct {
@@ -231,22 +264,53 @@ func ValidateObjectives(objectives map[string]float64) (map[float64]float64, err
 	return result, nil
 }
 
-func ParseMetrics(r io.Reader) (map[string]MetricHandler, error) {
-	result := make(map[string]MetricHandler)
+func LoadMetrics(file string) ([]MetricSpec, map[string]MetricHandler, error) {
+	var (
+		specs    []MetricSpec
+		handlers map[string]MetricHandler
+		err      error
+	)
+
+	metricsFile, err := os.OpenFile(file, os.O_RDONLY, 0644)
+	if err != nil {
+		return specs, handlers, err
+	}
+	defer metricsFile.Close()
+
+	specs, err = ReadMetrics(metricsFile)
+	if err != nil {
+		return specs, handlers, err
+	}
+
+	handlers, err = ParseMetricSpecs(specs)
+	if err != nil {
+		return specs, handlers, err
+	}
+
+	return specs, handlers, nil
+}
+
+func ReadMetrics(r io.Reader) ([]MetricSpec, error) {
+	var result []MetricSpec
 
 	jsonBlob, err := ioutil.ReadAll(r)
 	if err != nil {
 		return result, err
 	}
 
-	var specs []MetricSpec
-	err = json.Unmarshal(jsonBlob, &specs)
+	err = json.Unmarshal(jsonBlob, &result)
 	if err != nil {
 		return result, err
 	}
 
+	return result, nil
+}
+
+func ParseMetricSpecs(specs []MetricSpec) (map[string]MetricHandler, error) {
+	result := make(map[string]MetricHandler)
+
 	for _, spec := range specs {
-		err = ValidateMetric(spec.Name)
+		err := ValidateMetric(spec.Name)
 		if err != nil {
 			return result, err
 		}
@@ -355,13 +419,34 @@ func ParseMetrics(r io.Reader) (map[string]MetricHandler, error) {
 
 		err = prometheus.Register(c)
 		if err != nil {
-			return result, err
+			if _, ok := err.(prometheus.AlreadyRegisteredError); ok {
+				// this collector is already registered
+				// we log the message because this could happen on USR1 reload
+				// clients should know they can't modify existing metrics w/o killing & restarting the process
+				logger.Printf("Attempt to re-register metric '%s', not updating", spec.Name)
+			} else {
+				return result, err
+			}
+		} else {
+			result[spec.Name] = h
+			logger.Printf("Registered %s %s", spec.Type, spec.Name)
 		}
-		result[spec.Name] = h
-		logger.Printf("Registered %s %s", spec.Type, spec.Name)
 	}
 
 	return result, nil
+}
+
+func Unregister(handlers map[string]MetricHandler, names []string) {
+	for _, name := range names {
+		if handler, ok := handlers[name]; ok {
+			result := prometheus.Unregister(handler.Collector())
+			if result {
+				logger.Printf("Unregistered %s", name)
+			} else {
+				logger.Printf("Failed to unregistered %s", name)
+			}
+		}
+	}
 }
 
 func DataReader(ln net.Listener, metricCh chan<- *Metric) {
@@ -389,14 +474,18 @@ func DataReader(ln net.Listener, metricCh chan<- *Metric) {
 	}
 }
 
-func DataProcessor(handlers map[string]MetricHandler, metricCh <-chan *Metric) {
+func DataProcessor(handlers map[string]MetricHandler, metricCh <-chan *Metric, doneCh <-chan bool) {
 	for {
-		metric := <-metricCh
-		handler, ok := handlers[metric.Name]
-		if !ok {
-			logger.Printf("Metric %s not found\n", metric.Name)
-			continue
+		select {
+		case metric := <-metricCh:
+			handler, ok := handlers[metric.Name]
+			if !ok {
+				logger.Printf("Metric %s not found\n", metric.Name)
+				continue
+			}
+			handler.Handle(metric)
+		case <-doneCh:
+			break
 		}
-		handler.Handle(metric)
 	}
 }
