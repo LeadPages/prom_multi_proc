@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -40,15 +39,10 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *logFlag == "" {
-		logger = log.New(os.Stdout, "", log.LstdFlags)
-	} else {
-		logFile, err := os.OpenFile(*logFlag, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			fmt.Printf("Error opening log file (%s): %s\n", *logFlag, err)
-			os.Exit(1)
-		}
-		logger = log.New(logFile, "", log.LstdFlags)
+	err := SetLogger(*logFlag)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
 	metricCh := make(chan *Metric)
@@ -69,7 +63,7 @@ func main() {
 	}
 
 	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGKILL)
 	go func() {
 		<-sigc
 		ln.Close()
@@ -79,6 +73,21 @@ func main() {
 
 	go DataProcessor(metrics, metricCh)
 	go DataReader(ln, metricCh)
+
+	sigh := make(chan os.Signal, 1)
+	signal.Notify(sigh, syscall.SIGHUP)
+	go func() {
+		for {
+			<-sigh
+			logger.Println("Re-opening logs...")
+			err := SetLogger(*logFlag)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			logger.Println("Hello!")
+		}
+	}()
 
 	promHandler := promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		ErrorLog: logger,

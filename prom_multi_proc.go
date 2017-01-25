@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"regexp"
 	"strconv"
 
@@ -29,6 +31,7 @@ var (
 		10.0,
 	}
 	defaultObjectives = map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
+	logCloser         io.WriteCloser
 	logger            *log.Logger
 )
 
@@ -158,6 +161,33 @@ type SummaryVecHandler struct {
 
 func (h *SummaryVecHandler) Handle(m *Metric) {
 	h.SummaryVec.WithLabelValues(m.LabelValues...).Observe(m.Value)
+}
+
+type nopCloser struct {
+	io.Writer
+}
+
+func (nopCloser) Close() error {
+	return nil
+}
+
+func SetLogger(file string) error {
+	if logCloser != nil {
+		logCloser.Close()
+	}
+	var err error
+	if file == "" {
+		var b bytes.Buffer
+		logCloser = nopCloser{&b}
+		logger = log.New(os.Stdout, "", log.LstdFlags)
+	} else {
+		logCloser, err = os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return fmt.Errorf("Error opening log file (%s): %s\n", file, err)
+		}
+		logger = log.New(logCloser, "", log.LstdFlags)
+	}
+	return nil
 }
 
 func ValidateMetric(name string) error {
