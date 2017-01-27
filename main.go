@@ -69,7 +69,10 @@ func main() {
 	// load initial metrics from file, this may be reloaded later with USR1 signal
 	specs, handlers, err := LoadMetrics(*metricsFlag)
 	if err != nil {
-		logger.Fatal(err)
+		logger.Printf("Error loading metrics definitions: %s", err)
+		// start with empty specs and handlers
+		specs = []MetricSpec{}
+		handlers = map[string]MetricHandler{}
 	}
 
 	// begin processing initial metrics definitions
