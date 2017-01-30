@@ -461,15 +461,17 @@ func DataReader(ln net.Listener, metricCh chan<- *Metric) {
 		// we create a decoder that reads directly from the connection
 		d := json.NewDecoder(c)
 
-		var metric Metric
+		var metrics []Metric
 
-		err = d.Decode(&metric)
+		err = d.Decode(&metrics)
 		if err != nil {
 			logger.Println(err)
 			continue
 		}
 
-		metricCh <- &metric
+		for _, metric := range metrics {
+			metricCh <- &metric
+		}
 		c.Close()
 	}
 }
