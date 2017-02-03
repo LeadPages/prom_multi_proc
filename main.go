@@ -56,6 +56,11 @@ func main() {
 		logger.Fatal(err)
 	}
 
+	err = os.Chmod(*socketFlag, 0777)
+	if err != nil {
+		logger.Fatal(err)
+	}
+
 	// listen for signals which make us quit
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGKILL)
