@@ -35,7 +35,8 @@ sign: dist
 	$(eval key := $(shell git config --get user.signingkey))
 	for file in dist/*; do \
 		gpg2 --armor --local-user ${key} --detach-sign $${file}; \
-	done
+	done; \
+	find dist/ -type f  ! -name "*.tar.gz" -delete
 
 package: sign
 	for arch in ${ARCH}; do \
@@ -49,7 +50,7 @@ tag:
 
 upload:
 	if [ ! -z "${GITHUB_TOKEN}" ]; then \
-		ghr -t ${GITHUB_TOKEN} -u ${BUILD_USER} -r ${NAME} --replace ${VERSION} dist/*.tar.gz; \
+		ghr -t ${GITHUB_TOKEN} -u DripEmail -r ${NAME} -replace ${VERSION} dist/; \
 	fi
 
 release: package tag upload
