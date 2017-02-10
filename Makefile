@@ -1,3 +1,4 @@
+NAME=prom_multi_proc
 VERSION=$(shell cat version)
 BUILD_TIME=$(shell date)
 BUILD_USER=$(shell whoami)
@@ -11,7 +12,7 @@ all: clean test build
 
 clean:
 	go clean
-	@rm -f `which prom_multi_proc`
+	@rm -f `which ${NAME}`
 
 test:
 	go test -cover
@@ -26,7 +27,7 @@ distclean:
 dist: test distclean
 	for arch in ${ARCH}; do \
 		for os in ${OS}; do \
-			env GOOS=$${os} GOARCH=$${arch} go build -v ${LDFLAGS} -o dist/prom_multi_proc-${VERSION}-$${os}-$${arch}; \
+			env GOOS=$${os} GOARCH=$${arch} go build -v ${LDFLAGS} -o dist/${NAME}-${VERSION}-$${os}-$${arch}; \
 		done; \
 	done
 
@@ -39,13 +40,18 @@ sign: dist
 package: sign
 	for arch in ${ARCH}; do \
 		for os in ${OS}; do \
-			tar czf dist/prom_multi_proc-${VERSION}-$${os}-$${arch}.tar.gz -C dist prom_multi_proc-${VERSION}-$${os}-$${arch} prom_multi_proc-${VERSION}-$${os}-$${arch}.asc; \
+			tar czf dist/${NAME}-${VERSION}-$${os}-$${arch}.tar.gz -C dist ${NAME}-${VERSION}-$${os}-$${arch} ${NAME}-${VERSION}-$${os}-$${arch}.asc; \
 		done; \
 	done
 
 tag:
 	scripts/tag.sh
 
-release: package tag
+upload:
+	if [ ! -z "${GITHUB_TOKEN}" ]; then \
+		ghr -t ${GITHUB_TOKEN} -u ${BUILD_USER} -r ${NAME} --replace ${VERSION} dist/*.tar.gz; \
+	fi
 
-.PHONY: all clean test build distclean dist sign package tag release
+release: package tag upload
+
+.PHONY: all clean test build distclean dist sign package tag upload release

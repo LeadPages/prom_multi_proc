@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -142,7 +143,8 @@ func main() {
 	}()
 
 	// begin reading off socket and sending results into metrics channel
-	go DataReader(ln, metricCh)
+	workers := runtime.NumCPU()
+	go DataReader(ln, workers, metricCh)
 
 	// setup prometheus http handlers and begin listening
 	promHandler := promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{

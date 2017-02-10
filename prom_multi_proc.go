@@ -449,7 +449,12 @@ func Unregister(handlers map[string]MetricHandler, names []string) {
 	}
 }
 
-func DataReader(ln net.Listener, metricCh chan<- *Metric) {
+func DataReader(ln net.Listener, workers int, metricCh chan<- *Metric) {
+	dataCh := make(chan []byte)
+	for i := 0; i < workers; i++ {
+		go DataParser(dataCh, metricCh)
+	}
+
 	for {
 		// accept a connection
 		c, err := ln.Accept()
@@ -458,21 +463,25 @@ func DataReader(ln net.Listener, metricCh chan<- *Metric) {
 			continue
 		}
 
-		// we create a decoder that reads directly from the connection
-		d := json.NewDecoder(c)
+		var buf bytes.Buffer
+		io.Copy(&buf, c)
+		dataCh <- buf.Bytes()
+		c.Close()
+	}
+}
 
+func DataParser(dataCh <-chan []byte, metricCh chan<- *Metric) {
+	for {
 		var metrics []Metric
-
-		err = d.Decode(&metrics)
+		data := <-dataCh
+		err := json.Unmarshal(data, &metrics)
 		if err != nil {
 			logger.Println(err)
 			continue
 		}
-
 		for _, metric := range metrics {
 			metricCh <- &metric
 		}
-		c.Close()
 	}
 }
 
