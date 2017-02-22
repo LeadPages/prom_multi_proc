@@ -52,15 +52,19 @@ type Metric struct {
 }
 
 type MetricHandler interface {
-	Handle(*Metric)
+	Handle(*Metric) error
 	Collector() prometheus.Collector
+}
+
+type VecHandler interface {
+	LabelLength() int
 }
 
 type CounterHandler struct {
 	Counter prometheus.Counter
 }
 
-func (h *CounterHandler) Handle(m *Metric) {
+func (h *CounterHandler) Handle(m *Metric) error {
 	switch m.Method {
 	default:
 		logger.Printf("Invalid counter method %s for metric %s\n", m.Method, m.Name)
@@ -69,6 +73,8 @@ func (h *CounterHandler) Handle(m *Metric) {
 	case "add":
 		h.Counter.Add(m.Value)
 	}
+
+	return nil
 }
 
 func (h *CounterHandler) Collector() prometheus.Collector {
@@ -76,10 +82,19 @@ func (h *CounterHandler) Collector() prometheus.Collector {
 }
 
 type CounterVecHandler struct {
-	CounterVec *prometheus.CounterVec
+	labelLength int
+	CounterVec  *prometheus.CounterVec
 }
 
-func (h *CounterVecHandler) Handle(m *Metric) {
+func (h *CounterVecHandler) LabelLength() int {
+	return h.labelLength
+}
+
+func (h *CounterVecHandler) Handle(m *Metric) error {
+	if err := ValidateVecLabels(h, m); err != nil {
+		return err
+	}
+
 	switch m.Method {
 	default:
 		logger.Printf("Invalid counter method %s for metric %s\n", m.Method, m.Name)
@@ -88,6 +103,8 @@ func (h *CounterVecHandler) Handle(m *Metric) {
 	case "add":
 		h.CounterVec.WithLabelValues(m.LabelValues...).Add(m.Value)
 	}
+
+	return nil
 }
 
 func (h *CounterVecHandler) Collector() prometheus.Collector {
@@ -98,7 +115,7 @@ type GaugeHandler struct {
 	Gauge prometheus.Gauge
 }
 
-func (h *GaugeHandler) Handle(m *Metric) {
+func (h *GaugeHandler) Handle(m *Metric) error {
 	switch m.Method {
 	default:
 		logger.Printf("Invalid gauge method %s for metric %s\n", m.Method, m.Name)
@@ -115,6 +132,8 @@ func (h *GaugeHandler) Handle(m *Metric) {
 	case "set_to_current_time":
 		h.Gauge.SetToCurrentTime()
 	}
+
+	return nil
 }
 
 func (h *GaugeHandler) Collector() prometheus.Collector {
@@ -122,10 +141,19 @@ func (h *GaugeHandler) Collector() prometheus.Collector {
 }
 
 type GaugeVecHandler struct {
-	GaugeVec *prometheus.GaugeVec
+	labelLength int
+	GaugeVec    *prometheus.GaugeVec
 }
 
-func (h *GaugeVecHandler) Handle(m *Metric) {
+func (h *GaugeVecHandler) LabelLength() int {
+	return h.labelLength
+}
+
+func (h *GaugeVecHandler) Handle(m *Metric) error {
+	if err := ValidateVecLabels(h, m); err != nil {
+		return err
+	}
+
 	switch m.Method {
 	default:
 		logger.Printf("Invalid gauge vec method %s for metric %s\n", m.Method, m.Name)
@@ -142,6 +170,8 @@ func (h *GaugeVecHandler) Handle(m *Metric) {
 	case "set_to_current_time":
 		h.GaugeVec.WithLabelValues(m.LabelValues...).SetToCurrentTime()
 	}
+
+	return nil
 }
 
 func (h *GaugeVecHandler) Collector() prometheus.Collector {
@@ -152,8 +182,9 @@ type HistogramHandler struct {
 	Histogram prometheus.Histogram
 }
 
-func (h *HistogramHandler) Handle(m *Metric) {
+func (h *HistogramHandler) Handle(m *Metric) error {
 	h.Histogram.Observe(m.Value)
+	return nil
 }
 
 func (h *HistogramHandler) Collector() prometheus.Collector {
@@ -161,11 +192,21 @@ func (h *HistogramHandler) Collector() prometheus.Collector {
 }
 
 type HistogramVecHandler struct {
+	labelLength  int
 	HistogramVec *prometheus.HistogramVec
 }
 
-func (h *HistogramVecHandler) Handle(m *Metric) {
+func (h *HistogramVecHandler) LabelLength() int {
+	return h.labelLength
+}
+
+func (h *HistogramVecHandler) Handle(m *Metric) error {
+	if err := ValidateVecLabels(h, m); err != nil {
+		return err
+	}
+
 	h.HistogramVec.WithLabelValues(m.LabelValues...).Observe(m.Value)
+	return nil
 }
 
 func (h *HistogramVecHandler) Collector() prometheus.Collector {
@@ -176,8 +217,9 @@ type SummaryHandler struct {
 	Summary prometheus.Summary
 }
 
-func (h *SummaryHandler) Handle(m *Metric) {
+func (h *SummaryHandler) Handle(m *Metric) error {
 	h.Summary.Observe(m.Value)
+	return nil
 }
 
 func (h *SummaryHandler) Collector() prometheus.Collector {
@@ -185,11 +227,21 @@ func (h *SummaryHandler) Collector() prometheus.Collector {
 }
 
 type SummaryVecHandler struct {
-	SummaryVec *prometheus.SummaryVec
+	labelLength int
+	SummaryVec  *prometheus.SummaryVec
 }
 
-func (h *SummaryVecHandler) Handle(m *Metric) {
+func (h *SummaryVecHandler) LabelLength() int {
+	return h.labelLength
+}
+
+func (h *SummaryVecHandler) Handle(m *Metric) error {
+	if err := ValidateVecLabels(h, m); err != nil {
+		return err
+	}
+
 	h.SummaryVec.WithLabelValues(m.LabelValues...).Observe(m.Value)
+	return nil
 }
 
 func (h *SummaryVecHandler) Collector() prometheus.Collector {
@@ -216,11 +268,20 @@ func SetLogger(file string) error {
 	} else {
 		logCloser, err = os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			return fmt.Errorf("Error opening log file (%s): %s\n", file, err)
+			return fmt.Errorf("Error opening log file (%s): %s", file, err)
 		}
 		logger = log.New(logCloser, "", log.LstdFlags)
 	}
 	return nil
+}
+
+func ValidateVecLabels(vh VecHandler, m *Metric) error {
+	if vh.LabelLength() == len(m.LabelValues) {
+		return nil
+	}
+
+	return fmt.Errorf("Invalid labels for metric %s: need %d, got %d",
+		m.Name, vh.LabelLength(), len(m.LabelValues))
 }
 
 func ValidateMetric(name string) error {
@@ -316,7 +377,7 @@ func ParseMetricSpecs(specs []MetricSpec) (map[string]MetricHandler, error) {
 		}
 
 		if _, ok := result[spec.Name]; ok {
-			return result, fmt.Errorf("Metric with name %s already exists\n", spec.Name)
+			return result, fmt.Errorf("Metric with name %s already exists", spec.Name)
 		}
 
 		var (
@@ -325,7 +386,7 @@ func ParseMetricSpecs(specs []MetricSpec) (map[string]MetricHandler, error) {
 		)
 		switch spec.Type {
 		default:
-			return result, fmt.Errorf("Unknown metric type (%s) for metric %s\n", spec.Type, spec.Name)
+			return result, fmt.Errorf("Unknown metric type (%s) for metric %s", spec.Type, spec.Name)
 		case "counter":
 			opts := prometheus.CounterOpts{
 				Name: spec.Name,
@@ -341,7 +402,7 @@ func ParseMetricSpecs(specs []MetricSpec) (map[string]MetricHandler, error) {
 					return result, err
 				}
 				p := prometheus.NewCounterVec(opts, spec.Labels)
-				h = &CounterVecHandler{p}
+				h = &CounterVecHandler{len(spec.Labels), p}
 				c = p
 			}
 		case "gauge":
@@ -359,7 +420,7 @@ func ParseMetricSpecs(specs []MetricSpec) (map[string]MetricHandler, error) {
 					return result, err
 				}
 				p := prometheus.NewGaugeVec(opts, spec.Labels)
-				h = &GaugeVecHandler{p}
+				h = &GaugeVecHandler{len(spec.Labels), p}
 				c = p
 			}
 		case "histogram":
@@ -384,7 +445,7 @@ func ParseMetricSpecs(specs []MetricSpec) (map[string]MetricHandler, error) {
 					return result, err
 				}
 				p := prometheus.NewHistogramVec(opts, spec.Labels)
-				h = &HistogramVecHandler{p}
+				h = &HistogramVecHandler{len(spec.Labels), p}
 				c = p
 			}
 		case "summary":
@@ -412,7 +473,7 @@ func ParseMetricSpecs(specs []MetricSpec) (map[string]MetricHandler, error) {
 					return result, err
 				}
 				p := prometheus.NewSummaryVec(opts, spec.Labels)
-				h = &SummaryVecHandler{p}
+				h = &SummaryVecHandler{len(spec.Labels), p}
 				c = p
 			}
 		}
@@ -494,7 +555,11 @@ func DataProcessor(handlers map[string]MetricHandler, metricCh <-chan *Metric, d
 				logger.Printf("Metric %s not found\n", metric.Name)
 				continue
 			}
-			handler.Handle(metric)
+			err := handler.Handle(metric)
+			if err != nil {
+				logger.Println(err)
+				continue
+			}
 		case <-doneCh:
 			break
 		}

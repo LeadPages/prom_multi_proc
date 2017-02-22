@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"log"
 	"strings"
+	"sync"
 	"testing"
 )
 
-var testMetrics string = `[
+var (
+	testMetrics string = `[
 	{
 		"type": "counter",
 		"name": "test_counter",
@@ -95,31 +97,48 @@ var testMetrics string = `[
 		}
 	}
 ]`
+	handlers map[string]MetricHandler
+	specs    []MetricSpec
+	mu       sync.Mutex
+)
 
 func SetTestLogger() {
 	var out bytes.Buffer
 	logger = log.New(&out, "", log.LstdFlags)
 }
 
-func TestParseMetrics(t *testing.T) {
-	SetTestLogger()
+func GetTestHandlers(t *testing.T) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if handlers != nil {
+		return
+	}
 
 	// get metrics handlers
 	r := strings.NewReader(testMetrics)
+	var err error
 
-	specs, err := ReadMetrics(r)
+	specs, err = ReadMetrics(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	handlers, err := ParseMetricSpecs(specs)
+	handlers, err = ParseMetricSpecs(specs)
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestParseMetrics(t *testing.T) {
+	SetTestLogger()
+	GetTestHandlers(t)
 
 	if len(handlers) != 10 {
-		t.Errorf("Expected 10 metric specs, but got %d", len(specs))
+		t.Errorf("Expected 10 metric specs, but got %d", len(handlers))
 	}
+
+	var err error
 
 	for name, handler := range handlers {
 		var labelValues []string
@@ -131,7 +150,7 @@ func TestParseMetrics(t *testing.T) {
 			if spec.Name == name {
 				switch spec.Type {
 				default:
-					t.Fatal("Invalid metric handler type: %+v", handler)
+					t.Fatalf("Invalid metric handler type: %+v", handler)
 				case "counter", "counter_vec":
 					methods = []string{"inc", "add"}
 				case "gauge", "gauge_vec":
@@ -143,7 +162,7 @@ func TestParseMetrics(t *testing.T) {
 			}
 		}
 		if len(methods) == 0 {
-			t.Fatal("No methods found for handler: %+v", handler)
+			t.Fatalf("No methods found for handler: %+v", handler)
 		}
 		for _, method := range methods {
 			m := Metric{
@@ -152,7 +171,66 @@ func TestParseMetrics(t *testing.T) {
 				Value:       1.0,
 				LabelValues: labelValues,
 			}
-			handler.Handle(&m)
+			err = handler.Handle(&m)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func TestParseMetricsFail(t *testing.T) {
+	SetTestLogger()
+	GetTestHandlers(t)
+
+	if len(handlers) != 10 {
+		t.Errorf("Expected 10 metric specs, but got %d", len(handlers))
+	}
+
+	var err error
+
+	for name, handler := range handlers {
+		var labelValues []string
+		if strings.Contains(name, "_vec") {
+			labelValues = []string{"a", "b", "c", "d"}
+		}
+		var methods []string
+		for _, spec := range specs {
+			if spec.Name == name {
+				switch spec.Type {
+				default:
+					t.Fatalf("Invalid metric handler type: %+v", handler)
+				case "counter", "counter_vec":
+					methods = []string{"inc", "add"}
+				case "gauge", "gauge_vec":
+					methods = []string{"set", "inc", "dec", "add", "sub", "set_to_current_time"}
+				case "histogram", "histogram_vec", "summary", "summary_vec":
+					methods = []string{"observe"}
+				}
+				break
+			}
+		}
+		if len(methods) == 0 {
+			t.Fatalf("No methods found for handler: %+v", handler)
+		}
+		for _, method := range methods {
+			m := Metric{
+				Name:        name,
+				Method:      method,
+				Value:       1.0,
+				LabelValues: labelValues,
+			}
+			err = handler.Handle(&m)
+			if strings.Contains(name, "_vec") {
+				// here we expect failure due to label length miss-match
+				if err == nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
 	}
 }
