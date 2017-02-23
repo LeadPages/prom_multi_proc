@@ -85,10 +85,11 @@ func main() {
 		}
 	}()
 
-	specs := []MetricSpec{}
-	handlers := map[string]MetricHandler{}
+	registry := NewRegistry()
+
 	go func() {
 		defer func() {
+			// recover a panic here to make sure socket gets cleaned up
 			if r := recover(); r != nil {
 				logger.Printf("Recovered panic: %s", r)
 				ln.Close()
@@ -97,35 +98,39 @@ func main() {
 		}()
 		for {
 			logger.Println("Loading metric configuration...")
-			// note names of original metrics
-			originalNames := metricNames(specs)
+
+			// note beginning names of metrics
+			names := registry.Names()
 
 			// reload metrics definitions file
-			newSpecs, newHandlers, err := LoadMetrics(*metricsFlag)
+			specs, err := LoadSpecs(*metricsFlag)
 			if err != nil {
-				logger.Printf("Error re-loading configuration: %s", err)
+				logger.Printf("Error loading configuration: %s", err)
 				break
 			}
 
-			// add newly registered specs and handlers
-			for name, handler := range newHandlers {
-				handlers[name] = handler
+			newNames := []string{}
+			for _, spec := range specs {
+				newNames = append(newNames, spec.Name)
+				if err := registry.Register(spec); err != nil {
+					logger.Println(err)
+				} else {
+					logger.Printf("Registered %s", spec.Name)
+				}
 			}
 
 			// get names of metrics no longer present and unregister them
-			newNames := metricNames(newSpecs)
-			unreg := sliceSubStr(originalNames, newNames)
-			Unregister(handlers, unreg)
-
-			// delete unregistered handlers
+			unreg := sliceSubStr(names, newNames)
 			for _, name := range unreg {
-				delete(handlers, name)
+				if err := registry.Unregister(name); err != nil {
+					logger.Println(err)
+				} else {
+					logger.Printf("Unregistered %s", name)
+				}
 			}
 
-			specs = newSpecs
-
 			// begin processing incoming metrics
-			DataProcessor(handlers, metricCh, doneCh)
+			DataProcessor(registry, metricCh, doneCh)
 		}
 	}()
 

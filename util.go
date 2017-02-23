@@ -34,13 +34,3 @@ func sliceSubStr(a, b []string) []string {
 
 	return result
 }
-
-func metricNames(specs []MetricSpec) []string {
-	var result []string
-
-	for _, spec := range specs {
-		result = append(result, spec.Name)
-	}
-
-	return result
-}
