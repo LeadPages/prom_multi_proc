@@ -56,6 +56,7 @@ func main() {
 	if err != nil {
 		logger.Fatal(err)
 	}
+	defer ln.Close()
 
 	err = os.Chmod(*socketFlag, 0777)
 	if err != nil {
@@ -67,22 +68,10 @@ func main() {
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGKILL)
 	go func() {
 		<-sigc
-		ln.Close()
 		logger.Println("Goodbye!")
+		ln.Close()
 		os.Exit(0)
 	}()
-
-	// load initial metrics from file, this may be reloaded later with USR1 signal
-	specs, handlers, err := LoadMetrics(*metricsFlag)
-	if err != nil {
-		logger.Printf("Error loading metrics definitions: %s", err)
-		// start with empty specs and handlers
-		specs = []MetricSpec{}
-		handlers = map[string]MetricHandler{}
-	}
-
-	// begin processing initial metrics definitions
-	go DataProcessor(handlers, metricCh, doneCh)
 
 	// listen for USR1 signal which makes us reload our metrics definitions
 	sigu := make(chan os.Signal, 1)
@@ -90,8 +79,24 @@ func main() {
 	go func() {
 		for {
 			<-sigu
-			logger.Println("Re-loading configuration...")
+			logger.Println("USR1 Signal received")
+			// stop the data processor
+			doneCh <- true
+		}
+	}()
 
+	specs := []MetricSpec{}
+	handlers := map[string]MetricHandler{}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Printf("Recovered panic: %s", r)
+				ln.Close()
+				os.Exit(1)
+			}
+		}()
+		for {
+			logger.Println("Loading metric configuration...")
 			// note names of original metrics
 			originalNames := metricNames(specs)
 
@@ -99,11 +104,8 @@ func main() {
 			newSpecs, newHandlers, err := LoadMetrics(*metricsFlag)
 			if err != nil {
 				logger.Printf("Error re-loading configuration: %s", err)
-				continue
+				break
 			}
-
-			// stop the old data processor
-			doneCh <- true
 
 			// add newly registered specs and handlers
 			for name, handler := range newHandlers {
@@ -122,8 +124,8 @@ func main() {
 
 			specs = newSpecs
 
-			// begin processing incoming metrics again
-			go DataProcessor(handlers, metricCh, doneCh)
+			// begin processing incoming metrics
+			DataProcessor(handlers, metricCh, doneCh)
 		}
 	}()
 
@@ -137,6 +139,7 @@ func main() {
 			err := SetLogger(*logFlag)
 			if err != nil {
 				fmt.Println(err)
+				ln.Close()
 				os.Exit(1)
 			}
 		}

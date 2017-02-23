@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -280,8 +281,8 @@ func ValidateVecLabels(vh VecHandler, m *Metric) error {
 		return nil
 	}
 
-	return fmt.Errorf("Invalid labels for metric %s: need %d, got %d",
-		m.Name, vh.LabelLength(), len(m.LabelValues))
+	return fmt.Errorf("Invalid labels (%s): need %d, got ('%s')",
+		m.Name, vh.LabelLength(), strings.Join(m.LabelValues, "','"))
 }
 
 func ValidateMetric(name string) error {
@@ -550,9 +551,10 @@ func DataProcessor(handlers map[string]MetricHandler, metricCh <-chan *Metric, d
 	for {
 		select {
 		case metric := <-metricCh:
+			logger.Printf("Handling metric: %+v", metric)
 			handler, ok := handlers[metric.Name]
 			if !ok {
-				logger.Printf("Metric %s not found\n", metric.Name)
+				logger.Printf("Metric %s not found", metric.Name)
 				continue
 			}
 			err := handler.Handle(metric)
@@ -561,7 +563,8 @@ func DataProcessor(handlers map[string]MetricHandler, metricCh <-chan *Metric, d
 				continue
 			}
 		case <-doneCh:
-			break
+			logger.Printf("We are done!")
+			return
 		}
 	}
 }
