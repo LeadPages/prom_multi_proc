@@ -97,11 +97,11 @@ func main() {
 			}
 		}()
 		// this for loop must always either continue, or
-		// exit the process, in other words, never break,
+		// exit the process, in other words, never break;
 		// otherwise data processing will stop and USR1
 		// signals will not reload the metrics definition json
 		for {
-			logger.Println("Loading metric configuration...")
+			logger.Println("Loading metric configuration")
 
 			// note beginning names of metrics
 			names := registry.Names()
@@ -110,31 +110,38 @@ func main() {
 			specs, err := LoadSpecs(*metricsFlag)
 			if err != nil {
 				logger.Printf("Error loading configuration: %s", err)
-			}
-
-			newNames := []string{}
-			for _, spec := range specs {
-				newNames = append(newNames, spec.Name)
-				if err := registry.Register(spec); err != nil {
-					logger.Println(err)
-				} else {
-					logger.Printf("Registered %s", spec.Name)
+			} else {
+				// only register/unregister if there is no error processing
+				// the metrics definition json
+				newNames := []string{}
+				for _, spec := range specs {
+					newNames = append(newNames, spec.Name)
+					if err := registry.Register(spec); err != nil {
+						logger.Println(err)
+					} else {
+						logger.Printf("Registered %s", spec.Name)
+					}
 				}
-			}
 
-			// get names of metrics no longer present and unregister them
-			unreg := sliceSubStr(names, newNames)
-			for _, name := range unreg {
-				if err := registry.Unregister(name); err != nil {
-					logger.Println(err)
-				} else {
-					logger.Printf("Unregistered %s", name)
+				// get names of metrics no longer present and unregister them
+				unreg := sliceSubStr(names, newNames)
+				for _, name := range unreg {
+					if err := registry.Unregister(name); err != nil {
+						logger.Println(err)
+					} else {
+						logger.Printf("Unregistered %s", name)
+					}
 				}
 			}
 
 			// begin processing incoming metrics
 			DataProcessor(registry, metricCh, doneCh)
 		}
+
+		// Ensure this process ends if we ever return from the for loop.
+		logger.Println("Data processing has ended")
+		ln.Close()
+		os.Exit(1)
 	}()
 
 	// listen for HUP signal which makes us reopen our log file descriptors

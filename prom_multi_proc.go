@@ -96,6 +96,7 @@ func DataReader(ln net.Listener, workers int, metricCh chan<- *Metric) {
 		go DataParser(dataCh, metricCh)
 	}
 
+	logger.Println("Starting listening on socket")
 	for {
 		// accept a connection
 		c, err := ln.Accept()
@@ -109,6 +110,7 @@ func DataReader(ln net.Listener, workers int, metricCh chan<- *Metric) {
 		dataCh <- buf.Bytes()
 		c.Close()
 	}
+	logger.Println("Ending listening on socket")
 }
 
 func DataParser(dataCh <-chan []byte, metricCh chan<- *Metric) {
@@ -127,6 +129,7 @@ func DataParser(dataCh <-chan []byte, metricCh chan<- *Metric) {
 }
 
 func DataProcessor(registry Registry, metricCh <-chan *Metric, doneCh <-chan bool) {
+	logger.Println("Starting processing data")
 	for {
 		select {
 		case metric := <-metricCh:
@@ -135,6 +138,7 @@ func DataProcessor(registry Registry, metricCh <-chan *Metric, doneCh <-chan boo
 				continue
 			}
 		case <-doneCh:
+			logger.Println("Ending processing data")
 			return
 		}
 	}
