@@ -96,6 +96,10 @@ func main() {
 				os.Exit(1)
 			}
 		}()
+		// this for loop must always either continue, or
+		// exit the process, in other words, never break,
+		// otherwise data processing will stop and USR1
+		// signals will not reload the metrics definition json
 		for {
 			logger.Println("Loading metric configuration...")
 
@@ -106,7 +110,6 @@ func main() {
 			specs, err := LoadSpecs(*metricsFlag)
 			if err != nil {
 				logger.Printf("Error loading configuration: %s", err)
-				break
 			}
 
 			newNames := []string{}
