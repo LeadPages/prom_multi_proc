@@ -9,11 +9,21 @@ import (
 	"log"
 	"net"
 	"os"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
 	logCloser io.WriteCloser
 	logger    *log.Logger
+
+	metricsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "pmp_metrics_total",
+			Help: "Total count of metrics processed by status",
+		},
+		[]string{"status"},
+	)
 )
 
 type MetricSpec struct {
@@ -38,6 +48,10 @@ type nopCloser struct {
 
 func (nopCloser) Close() error {
 	return nil
+}
+
+func CountMetric(status string) {
+	metricsTotal.WithLabelValues(status).Inc()
 }
 
 func SetLogger(file string) error {
@@ -101,7 +115,8 @@ func DataReader(ln net.Listener, workers int, metricCh chan<- *Metric) {
 		// accept a connection
 		c, err := ln.Accept()
 		if err != nil {
-			logger.Println(err)
+			CountMetric("error")
+			logger.Printf("ERROR (DataReader): %s", err)
 			continue
 		}
 
@@ -119,7 +134,8 @@ func DataParser(dataCh <-chan []byte, metricCh chan<- *Metric) {
 		data := <-dataCh
 		err := json.Unmarshal(data, &metrics)
 		if err != nil {
-			logger.Println(err)
+			CountMetric("error")
+			logger.Printf("ERROR (DataParser): %s", err)
 			continue
 		}
 		for _, metric := range metrics {
@@ -133,12 +149,14 @@ func DataProcessor(registry Registry, metricCh <-chan *Metric, doneCh <-chan boo
 	for {
 		select {
 		case metric := <-metricCh:
-			if err := registry.Handle(metric); err != nil {
-				logger.Println(err)
+			err := registry.Handle(metric)
+			if err != nil {
+				CountMetric("error")
+				logger.Printf("ERROR (DataProcessor): %s - %s", metric.Name, err)
 				continue
 			}
+			CountMetric("ok")
 		case <-doneCh:
-			logger.Println("Ending processing data")
 			return
 		}
 	}

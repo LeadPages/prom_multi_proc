@@ -16,10 +16,10 @@ import (
 
 // build flags
 var (
-	Version   string = "unset"
+	Version   string = "development"
 	BuildTime string = "unset"
-	BuildUser string = "unset"
 	BuildHash string = "unset"
+	GoVersion string = "unset"
 )
 
 // cli flags
@@ -32,11 +32,15 @@ var (
 	versionFlag = flag.Bool("v", false, "Print version information and exit")
 )
 
+func init() {
+	prometheus.MustRegister(metricsTotal)
+}
+
 func main() {
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Printf("prom_multi_proc %s %s %s %s\n", Version, BuildTime, BuildUser, BuildHash)
+		fmt.Printf("prom_multi_proc %s %s %s %s\n", Version, BuildTime, BuildHash, GoVersion)
 		os.Exit(0)
 	}
 
