@@ -1,20 +1,10 @@
 package main
 
 import (
-	"fmt"
-	"strings"
+	"errors"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
-
-func ValidateVecLabels(h MetricHandler, m *Metric) error {
-	if len(h.Spec().Labels) == len(m.LabelValues) {
-		return nil
-	}
-
-	return fmt.Errorf("Invalid labels (%s): need ('%s'), got ('%s')",
-		m.Name, strings.Join(h.Spec().Labels, "','"), strings.Join(m.LabelValues, "','"))
-}
 
 type MetricHandler interface {
 	Spec() *MetricSpec
@@ -38,6 +28,9 @@ func (h *CounterHandler) Handle(m *Metric) error {
 	case "inc":
 		h.Counter.Inc()
 	case "add":
+		if m.Value < 0 {
+			return errors.New("counter cannot decrease in value")
+		}
 		h.Counter.Add(m.Value)
 	}
 
@@ -58,7 +51,8 @@ func (h *CounterVecHandler) Spec() *MetricSpec {
 }
 
 func (h *CounterVecHandler) Handle(m *Metric) error {
-	if err := ValidateVecLabels(h, m); err != nil {
+	metric, err := h.CounterVec.GetMetricWithLabelValues(m.LabelValues...)
+	if err != nil {
 		return err
 	}
 
@@ -66,9 +60,9 @@ func (h *CounterVecHandler) Handle(m *Metric) error {
 	default:
 		logger.Printf("Invalid counter method %s for metric %s\n", m.Method, m.Name)
 	case "inc":
-		h.CounterVec.WithLabelValues(m.LabelValues...).Inc()
+		metric.Inc()
 	case "add":
-		h.CounterVec.WithLabelValues(m.LabelValues...).Add(m.Value)
+		metric.Add(m.Value)
 	}
 
 	return nil
@@ -122,7 +116,8 @@ func (h *GaugeVecHandler) Spec() *MetricSpec {
 }
 
 func (h *GaugeVecHandler) Handle(m *Metric) error {
-	if err := ValidateVecLabels(h, m); err != nil {
+	metric, err := h.GaugeVec.GetMetricWithLabelValues(m.LabelValues...)
+	if err != nil {
 		return err
 	}
 
@@ -130,17 +125,17 @@ func (h *GaugeVecHandler) Handle(m *Metric) error {
 	default:
 		logger.Printf("Invalid gauge vec method %s for metric %s\n", m.Method, m.Name)
 	case "set":
-		h.GaugeVec.WithLabelValues(m.LabelValues...).Set(m.Value)
+		metric.Set(m.Value)
 	case "inc":
-		h.GaugeVec.WithLabelValues(m.LabelValues...).Inc()
+		metric.Inc()
 	case "dec":
-		h.GaugeVec.WithLabelValues(m.LabelValues...).Dec()
+		metric.Dec()
 	case "add":
-		h.GaugeVec.WithLabelValues(m.LabelValues...).Add(m.Value)
+		metric.Add(m.Value)
 	case "sub":
-		h.GaugeVec.WithLabelValues(m.LabelValues...).Sub(m.Value)
+		metric.Sub(m.Value)
 	case "set_to_current_time":
-		h.GaugeVec.WithLabelValues(m.LabelValues...).SetToCurrentTime()
+		metric.SetToCurrentTime()
 	}
 
 	return nil
@@ -178,11 +173,11 @@ func (h *HistogramVecHandler) Spec() *MetricSpec {
 }
 
 func (h *HistogramVecHandler) Handle(m *Metric) error {
-	if err := ValidateVecLabels(h, m); err != nil {
+	metric, err := h.HistogramVec.GetMetricWithLabelValues(m.LabelValues...)
+	if err != nil {
 		return err
 	}
-
-	h.HistogramVec.WithLabelValues(m.LabelValues...).Observe(m.Value)
+	metric.Observe(m.Value)
 	return nil
 }
 
@@ -218,11 +213,11 @@ func (h *SummaryVecHandler) Spec() *MetricSpec {
 }
 
 func (h *SummaryVecHandler) Handle(m *Metric) error {
-	if err := ValidateVecLabels(h, m); err != nil {
+	metric, err := h.SummaryVec.GetMetricWithLabelValues(m.LabelValues...)
+	if err != nil {
 		return err
 	}
-
-	h.SummaryVec.WithLabelValues(m.LabelValues...).Observe(m.Value)
+	metric.Observe(m.Value)
 	return nil
 }
 

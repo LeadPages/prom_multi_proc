@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"runtime"
 	"syscall"
 
@@ -36,11 +37,15 @@ func init() {
 	prometheus.MustRegister(metricsTotal)
 }
 
+func versionStr() string {
+	return fmt.Sprintf("%s %s %s %s %s", path.Base(os.Args[0]), Version, BuildTime, BuildHash, GoVersion)
+}
+
 func main() {
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Printf("prom_multi_proc %s %s %s %s\n", Version, BuildTime, BuildHash, GoVersion)
+		fmt.Println(versionStr())
 		os.Exit(0)
 	}
 
@@ -105,6 +110,7 @@ func main() {
 		// otherwise data processing will stop and USR1
 		// signals will not reload the metrics definition json
 		for {
+			logger.Println(versionStr())
 			logger.Println("Loading metric configuration")
 
 			// note beginning names of metrics
