@@ -62,6 +62,9 @@ func (h *CounterVecHandler) Handle(m *Metric) error {
 	case "inc":
 		metric.Inc()
 	case "add":
+		if m.Value < 0 {
+			return errors.New("counter cannot decrease in value")
+		}
 		metric.Add(m.Value)
 	}
 
