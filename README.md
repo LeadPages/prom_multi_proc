@@ -17,21 +17,21 @@ for background information.
 
 ## Install
 
-Download the [latest release](https://github.com/DripEmail/prom_multi_proc/releases), extract it,
+Download the [latest release](https://github.com/atongen/prom_multi_proc/releases), extract it,
 and put it somewhere on your PATH.
 
 or
 
 ```sh
-$ go get github.com/DripEmail/prom_multi_proc
+$ go get github.com/atongen/prom_multi_proc
 ```
 
 or
 
 ```sh
-$ mkdir -p $GOPATH/src/github.com/DripEmail
-$ cd $GOPATH/src/github.com/DripEmail
-$ git clone git@github.com:DripEmail/prom_multi_proc.git
+$ mkdir -p $GOPATH/src/github.com/atongen
+$ cd $GOPATH/src/github.com/atongen
+$ git clone git@github.com:atongen/prom_multi_proc.git
 $ cd prom_multi_proc
 $ go install
 $ rehash
@@ -40,16 +40,16 @@ $ rehash
 ## Testing
 
 ```sh
-$ cd $GOPATH/src/github.com/DripEmail/prom_multi_proc
+$ cd $GOPATH/src/github.com/atongen/prom_multi_proc
 $ go test -cover
 ```
 
 ## Releases
 
 ```sh
-$ mkdir -p $GOPATH/src/github.com/DripEmail
-$ cd $GOPATH/src/github.com/DripEmail
-$ git clone git@github.com:DripEmail/prom_multi_proc.git
+$ mkdir -p $GOPATH/src/github.com/atongen
+$ cd $GOPATH/src/github.com/atongen
+$ git clone git@github.com:atongen/prom_multi_proc.git
 $ cd prom_multi_proc
 $ make release
 ```

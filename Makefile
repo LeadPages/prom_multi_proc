@@ -53,7 +53,7 @@ tag:
 
 upload:
 	if [ ! -z "$${GITHUB_TOKEN}" ]; then \
-		ghr -t "$${GITHUB_TOKEN}" -u DripEmail -r ${NAME} -replace ${VERSION} dist/; \
+		ghr -t "$${GITHUB_TOKEN}" -u $$(whoami) -r ${NAME} -replace ${VERSION} dist/; \
 	fi
 
 release: package tag upload
