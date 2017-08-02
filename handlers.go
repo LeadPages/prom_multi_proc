@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -53,7 +54,7 @@ func (h *CounterVecHandler) Spec() *MetricSpec {
 func (h *CounterVecHandler) Handle(m *Metric) error {
 	metric, err := h.CounterVec.GetMetricWithLabelValues(m.LabelValues...)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s (%+v)", err, m.LabelValues)
 	}
 
 	switch m.Method {
@@ -121,7 +122,7 @@ func (h *GaugeVecHandler) Spec() *MetricSpec {
 func (h *GaugeVecHandler) Handle(m *Metric) error {
 	metric, err := h.GaugeVec.GetMetricWithLabelValues(m.LabelValues...)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s (%+v)", err, m.LabelValues)
 	}
 
 	switch m.Method {
@@ -178,7 +179,7 @@ func (h *HistogramVecHandler) Spec() *MetricSpec {
 func (h *HistogramVecHandler) Handle(m *Metric) error {
 	metric, err := h.HistogramVec.GetMetricWithLabelValues(m.LabelValues...)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s (%+v)", err, m.LabelValues)
 	}
 	metric.Observe(m.Value)
 	return nil
@@ -218,7 +219,7 @@ func (h *SummaryVecHandler) Spec() *MetricSpec {
 func (h *SummaryVecHandler) Handle(m *Metric) error {
 	metric, err := h.SummaryVec.GetMetricWithLabelValues(m.LabelValues...)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s (%+v)", err, m.LabelValues)
 	}
 	metric.Observe(m.Value)
 	return nil
