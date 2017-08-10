@@ -104,12 +104,7 @@ func ReadSpecs(r io.Reader) ([]*MetricSpec, error) {
 	return result, nil
 }
 
-func DataReader(ln net.Listener, workers int, metricCh chan<- *Metric) {
-	dataCh := make(chan []byte)
-	for i := 0; i < workers; i++ {
-		go DataParser(dataCh, metricCh)
-	}
-
+func DataReader(ln net.Listener, dataCh chan<- []byte) {
 	logger.Println("Starting listening on socket")
 	for {
 		// accept a connection
@@ -128,7 +123,7 @@ func DataReader(ln net.Listener, workers int, metricCh chan<- *Metric) {
 	logger.Println("Ending listening on socket")
 }
 
-func DataParser(dataCh <-chan []byte, metricCh chan<- *Metric) {
+func DataParser(dataCh <-chan []byte, metricCh chan<- Metric) {
 	for {
 		var metrics []Metric
 		data := <-dataCh
@@ -138,21 +133,21 @@ func DataParser(dataCh <-chan []byte, metricCh chan<- *Metric) {
 			logger.Printf("ERROR (DataParser): %s", err)
 			continue
 		}
-		for _, metric := range metrics {
-			metricCh <- &metric
+		for i := 0; i < len(metrics); i++ {
+			metricCh <- metrics[i]
 		}
 	}
 }
 
-func DataProcessor(registry Registry, metricCh <-chan *Metric, doneCh <-chan bool) {
+func DataProcessor(registry Registry, metricCh <-chan Metric, doneCh <-chan bool) {
 	logger.Println("Starting processing data")
 	for {
 		select {
 		case metric := <-metricCh:
-			err := registry.Handle(metric)
+			err := registry.Handle(&metric)
 			if err != nil {
 				CountMetric("error")
-				logger.Printf("ERROR (DataProcessor): %s - %s", metric.Name, err)
+				logger.Printf("ERROR (DataProcessor): %s %+v", err, metric)
 				continue
 			}
 			CountMetric("ok")

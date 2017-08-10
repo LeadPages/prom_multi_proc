@@ -57,7 +57,8 @@ func main() {
 	}
 
 	// setup metrics and done channels
-	metricCh := make(chan *Metric)
+	metricCh := make(chan Metric)
+	dataCh := make(chan []byte)
 	doneCh := make(chan bool)
 
 	// begin listening on socket
@@ -170,9 +171,12 @@ func main() {
 		}
 	}()
 
-	// begin reading off socket and sending results into metrics channel
 	workers := runtime.NumCPU()
-	go DataReader(ln, workers, metricCh)
+	for i := 0; i < workers; i++ {
+		go DataParser(dataCh, metricCh)
+	}
+
+	go DataReader(ln, dataCh)
 
 	// setup prometheus http handlers and begin listening
 	promHandler := promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -290,5 +291,84 @@ func TestMetrics3Rereg(t *testing.T) {
 	mySpec.Labels = []string{"Now", "for", "something", "completely", "different"}
 	if err := registry.Register(mySpec); err == nil {
 		t.Fatal("Expected re-reg of spec to throw error, but did not.")
+	}
+}
+
+func TestMetrics5Multi(t *testing.T) {
+	SetTestLogger()
+	specs := getTestSpecs(t, 5)
+
+	metricCh := make(chan Metric)
+	dataCh := make(chan []byte)
+
+	registry := NewRegistry()
+
+	// register all of specs
+	for _, spec := range specs {
+		if err := registry.Register(spec); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	go DataParser(dataCh, metricCh)
+
+	data := []Metric{
+		Metric{
+			Name:   "test_5_counter",
+			Method: "inc",
+		},
+		Metric{
+			Name: "test_5_gauge_vec",
+			LabelValues: []string{
+				"1",
+				"2",
+				"3",
+			},
+			Method: "add",
+			Value:  39.0,
+		},
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		dataCh <- b
+	}()
+
+	for i := 0; i < 2; i++ {
+		metric := <-metricCh
+		switch i {
+		default:
+			t.Fatalf("Invalid metric number: %d", i)
+		case 0:
+			if metric.Name != "test_5_counter" {
+				t.Fatalf("Expected metric 1 name to be 'test_5_counter', but was %s", metric.Name)
+			}
+			if metric.Method != "inc" {
+				t.Fatalf("Expected metric 1 method to be 'inc', but was %s", metric.Method)
+			}
+			if len(metric.LabelValues) != 0 {
+				t.Fatalf("Expected length of metric 1 label values to be to be 0, but was %d", len(metric.LabelValues))
+			}
+			if metric.Value != 0.0 {
+				t.Fatalf("Expected metric 1 value to be 0.0, but was %f", metric.Value)
+			}
+		case 1:
+			if metric.Name != "test_5_gauge_vec" {
+				t.Fatalf("Expected metric 2 name to be 'test_5_gauge_vec', but was %s", metric.Name)
+			}
+			if metric.Method != "add" {
+				t.Fatalf("Expected metric 2 method to be 'add', but was %s", metric.Method)
+			}
+			if len(metric.LabelValues) != 3 {
+				t.Fatalf("Expected length of metric 3 label values to be to be 3, but was %d", len(metric.LabelValues))
+			}
+			if metric.Value != 39.0 {
+				t.Fatalf("Expected metric 2 value to be 39.0, but was %f", metric.Value)
+			}
+		}
 	}
 }
